@@ -115,7 +115,10 @@ if cookie_role and st.session_state.role != cookie_role:
 # --- FUNGSI LOGOUT ---
 def logout():
     st.session_state.role = None
-    cookie_manager.delete("role")
+    try:
+        cookie_manager.delete("role")
+    except KeyError:
+        pass
 
 # ==========================================
 # HALAMAN LOGIN UTAMA
@@ -125,7 +128,7 @@ if st.session_state.role is None:
     st.info("Selamat datang! Untuk merekam kehadiran Anda, silakan klik tombol di bawah ini.")
     
     # 1. Tombol Utama Pegawai
-    if st.button("📸 Mulai Presensi Wajah & GPS", type="primary", use_container_width=True):
+    if st.button("📸 Mulai Presensi Wajah & GPS", type="primary", width="stretch"):
         st.session_state.role = "Pegawai"
         cookie_manager.set("role", "Pegawai")
         time.sleep(0.5) # Jeda waktu agar browser menyimpan cookie sebelum direfresh
@@ -140,7 +143,7 @@ if st.session_state.role is None:
     with col_admin:
         with st.expander("🔑 Login Admin"):
             pwd = st.text_input("Password Admin:", type="password", key="pwd_admin_main")
-            if st.button("Masuk Admin", use_container_width=True, key="btn_admin_main"):
+            if st.button("Masuk Admin", width="stretch", key="btn_admin_main"):
                 if pwd == "admin123":
                     st.session_state.role = "Admin"
                     cookie_manager.set("role", "Admin")
@@ -152,7 +155,7 @@ if st.session_state.role is None:
     with col_super:
         with st.expander("🛠️ Login Superadmin"):
             pwd_super = st.text_input("Password Superadmin:", type="password", key="pwd_super_main")
-            if st.button("Masuk Superadmin", use_container_width=True, key="btn_super_main"):
+            if st.button("Masuk Superadmin", width="stretch", key="btn_super_main"):
                 if pwd_super == "superadmin123":
                     st.session_state.role = "Superadmin"
                     cookie_manager.set("role", "Superadmin")
@@ -288,9 +291,9 @@ if st.session_state.role == "Pegawai":
                         # --- TOMBOL MASUK DAN PULANG ---
                         col_masuk, col_pulang = st.columns(2)
                         with col_masuk:
-                            btn_masuk = st.button("📥 MASUK", type="primary", use_container_width=True)
+                            btn_masuk = st.button("📥 MASUK", type="primary", width="stretch")
                         with col_pulang:
-                            btn_pulang = st.button("📤 PULANG", use_container_width=True)
+                            btn_pulang = st.button("📤 PULANG", width="stretch")
                             
                         if btn_masuk or btn_pulang:
                             now = datetime.datetime.now(pytz.timezone('Asia/Makassar'))
@@ -363,7 +366,7 @@ elif st.session_state.role == "Admin":
     with col_judul:
         st.title("🔐 Dashboard Admin")
     with col_tombol:
-        st.button("🚪 Logout", on_click=logout, use_container_width=True)
+        st.button("🚪 Logout", on_click=logout, width="stretch")
     
     if st.session_state.employees.empty:
          st.warning("Belum ada data pegawai. Minta Superadmin menambah pegawai terlebih dahulu.")
@@ -487,7 +490,7 @@ elif st.session_state.role == "Admin":
         # Terapkan warna ke dataframe
         df_berwarna = df_rekap.style.map(warnai_status, subset=['STATUS'])
         
-        st.dataframe(df_berwarna, use_container_width=True)
+        st.dataframe(df_berwarna, width="stretch")
         st.download_button(
             "📥 Download Rekap Absensi (CSV)",
             data=df_rekap.to_csv(index=False).encode('utf-8'),
@@ -503,7 +506,7 @@ elif st.session_state.role == "Superadmin":
     with col_judul:
         st.title("🛠️ Dashboard Superadmin")
     with col_tombol:
-        st.button("🚪 Logout", on_click=logout, use_container_width=True)
+        st.button("🚪 Logout", on_click=logout, width="stretch")
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏛️ Kelola Sekolah", "👥 Kelola Pegawai", "📝 Input Izin/Dinas", "🚨 Database", "⚙️ Jam Kerja"])
     
@@ -536,7 +539,7 @@ elif st.session_state.role == "Superadmin":
         edited_schools = st.data_editor(
             st.session_state.schools,
             num_rows="dynamic",
-            use_container_width=True,
+            width="stretch",
             key="school_editor"
         )
         
