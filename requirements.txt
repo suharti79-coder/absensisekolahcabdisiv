@@ -5,3 +5,4 @@ pytz
 geopy
 streamlit-geolocation
 openpyxl
+extra-streamlit-components
