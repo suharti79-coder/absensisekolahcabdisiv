@@ -63,7 +63,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- KONFIGURASI DATABASE CSV ---
-# --- KONFIGURASI DATABASE CSV ---
 FILE_ABSENSI = "data_absensi.csv"
 FILE_SEKOLAH = "data_sekolah.csv"
 FILE_PEGAWAI = "data_pegawai.csv"
@@ -96,6 +95,7 @@ if 'schools' not in st.session_state:
 
 if 'employees' not in st.session_state:
     st.session_state.employees = muat_data(FILE_PEGAWAI, [], kolom_default=['nip', 'name', 'school_name', 'photo_uploaded', 'photo_base64'])
+
 if 'settings' not in st.session_state:
     st.session_state.settings = muat_data(FILE_PENGATURAN, [
         {'batas_masuk': '07:30', 'batas_pulang': '16:00'}
@@ -106,8 +106,6 @@ if 'role' not in st.session_state:
 
 def logout():
     st.session_state.role = None
-
-
 
 # ==========================================
 # HALAMAN LOGIN UTAMA
@@ -278,38 +276,62 @@ if st.session_state.role == "Pegawai":
                         with col_pulang:
                             btn_pulang = st.button("📤 PULANG", use_container_width=True)
                             
-                        NameError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
-Traceback:
-File "/mount/src/absensisekolahcabdisiv/app.py", line 346, in <module>
-    if jam_sekarang > batas_masuk_obj:
-       ^^^^^^^^^^^^
+                        if btn_masuk or btn_pulang:
+                            now = datetime.datetime.now(pytz.timezone('Asia/Makassar'))
+                            tgl_sekarang = now.strftime('%Y-%m-%d')
+                            jenis_aksi = "Masuk" if btn_masuk else "Pulang"
                             
-                            # Cek Keterlambatan
-                            if btn_masuk:
-                                if jam_sekarang > batas_masuk_obj:
-                                    jenis_absen = "Masuk (TERLAMBAT)"
-                                else:
-                                    jenis_absen = "Masuk (Tepat Waktu)"
-                            else: # btn_pulang
-                                if jam_sekarang < batas_pulang_obj:
-                                    jenis_absen = "Pulang (LEBIH AWAL)"
-                                else:
-                                    jenis_absen = "Pulang (Tepat Waktu)"
-
-                            # Menyimpan data
-                            data_absen_baru = pd.DataFrame([{
-                                'NIP': emp_data['nip'], 
-                                'Nama': emp_data['name'], 
-                                'Sekolah': sch_data['school_name'],
-                                'Tanggal': now.strftime('%Y-%m-%d'), 
-                                'Jam': now.strftime('%H:%M:%S'),
-                                'Jarak (m)': round(jarak_meter, 1), 
-                                'Status': f'Hadir - {jenis_absen}'  # <-- Status otomatis terganti disini
-                            }])
+                            # 1. BACA DATABASE ABSENSI
                             df_lama = pd.read_csv(FILE_ABSENSI) if os.path.exists(FILE_ABSENSI) else pd.DataFrame()
-                            df_final = pd.concat([df_lama, data_absen_baru], ignore_index=True)
-                            simpan_data(df_final, FILE_ABSENSI)
-                            st.success(f"✅ Absensi {jenis_absen} Anda berhasil tersimpan!")
+                            
+                            # 2. CEK STATUS ABSENSI
+                            sudah_absen = False
+                            if not df_lama.empty and 'NIP' in df_lama.columns and 'Tanggal' in df_lama.columns:
+                                df_lama['NIP'] = df_lama['NIP'].astype(str)
+                                data_terceklis = df_lama[
+                                    (df_lama['NIP'] == str(emp_data['nip'])) & 
+                                    (df_lama['Tanggal'] == tgl_sekarang) & 
+                                    (df_lama['Status'].str.contains(jenis_aksi, na=False))
+                                ]
+                                if not data_terceklis.empty:
+                                    sudah_absen = True
+
+                            # 3. KONDISI JIKA SUDAH ABSEN ATAU BELUM
+                            if sudah_absen:
+                                st.warning(f"⚠️ Anda sudah melakukan absensi **{jenis_aksi}** untuk hari ini ({tgl_sekarang})!")
+                            else:
+                                jam_sekarang = now.time()
+                                
+                                batas_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
+                                batas_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
+                                
+                                batas_masuk_obj = datetime.datetime.strptime(batas_masuk_str, '%H:%M').time()
+                                batas_pulang_obj = datetime.datetime.strptime(batas_pulang_str, '%H:%M').time()
+                                
+                                if btn_masuk:
+                                    if jam_sekarang > batas_masuk_obj:
+                                        jenis_absen = "Masuk (TERLAMBAT)"
+                                    else:
+                                        jenis_absen = "Masuk (Tepat Waktu)"
+                                else:
+                                    if jam_sekarang < batas_pulang_obj:
+                                        jenis_absen = "Pulang (LEBIH AWAL)"
+                                    else:
+                                        jenis_absen = "Pulang (Tepat Waktu)"
+
+                                data_absen_baru = pd.DataFrame([{
+                                    'NIP': str(emp_data['nip']), 
+                                    'Nama': emp_data['name'], 
+                                    'Sekolah': sch_data['school_name'],
+                                    'Tanggal': tgl_sekarang, 
+                                    'Jam': now.strftime('%H:%M:%S'),
+                                    'Jarak (m)': round(jarak_meter, 1), 
+                                    'Status': f'Hadir - {jenis_absen}'
+                                }])
+                                
+                                df_final = pd.concat([df_lama, data_absen_baru], ignore_index=True)
+                                simpan_data(df_final, FILE_ABSENSI)
+                                st.success(f"✅ Absensi {jenis_absen} Anda berhasil tersimpan!")
                 else:
                     st.warning("Admin belum mengunggah foto acuan Anda.")
             else:
@@ -409,7 +431,21 @@ elif st.session_state.role == "Admin":
         m3.metric("Izin/Sakit/Cuti/Dinas", izin_dll_count)
         m4.metric("Tanpa Keterangan", tanpa_ket_count)
         
-        st.dataframe(df_rekap, use_container_width=True)
+        # Fungsi untuk memberi warna pada kolom Status
+        def warnai_status(val):
+            if isinstance(val, str):
+                if 'TERLAMBAT' in val or 'LEBIH AWAL' in val:
+                    return 'color: #D9534F; font-weight: bold;'
+                elif 'Tepat Waktu' in val:
+                    return 'color: #5CB85C; font-weight: bold;'
+                elif val == 'Tanpa Keterangan':
+                    return 'color: #F0AD4E;'
+            return ''
+
+        # Terapkan warna ke dataframe
+        df_berwarna = df_rekap.style.map(warnai_status, subset=['Status'])
+        
+        st.dataframe(df_berwarna, use_container_width=True)
         st.download_button(
             "📥 Download Rekap Absensi (CSV)",
             data=df_rekap.to_csv(index=False).encode('utf-8'),
@@ -613,4 +649,4 @@ elif st.session_state.role == "Superadmin":
                 st.session_state.settings.at[0, 'batas_pulang'] = new_batas_pulang.strftime('%H:%M')
                 simpan_data(st.session_state.settings, FILE_PENGATURAN)
                 st.success("✅ Pengaturan jam kerja berhasil diperbarui!")
-                st.rerun()    
+                st.rerun()
