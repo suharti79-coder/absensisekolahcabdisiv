@@ -4,12 +4,22 @@ import datetime
 import pytz
 import base64
 import os
+import time
 import geopy.distance
 from streamlit_geolocation import streamlit_geolocation
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Sistem Absensi Sekolah Cabdis Wil IV", page_icon="🏫", layout="centered")
+
+# --- INISIALISASI COOKIE MANAGER ---
+# Wajib dipanggil di bagian paling atas aplikasi
+@st.cache_resource
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
 
 # --- KUSTOMISASI TAMPILAN (CUSTOM CSS) ---
 st.markdown("""
@@ -20,17 +30,14 @@ st.markdown("""
         font-family: 'Poppins', sans-serif !important;
     }
 
-    /* SEMBUNYIKAN ATRIBUT STREAMLIT */
     header {visibility: hidden !important; height: 0px !important;} 
     [data-testid="stToolbar"] {visibility: hidden !important;} 
     [data-testid="stDecoration"] {visibility: hidden !important;} 
     footer {visibility: hidden !important;} 
     #MainMenu {visibility: hidden !important;}
 
-    /* Geser konten utama ke atas menutupi ruang kosong header */
     .block-container { padding-top: 2rem !important; }
 
-    /* Styling Kartu */
     .stForm, div[data-testid="stExpander"] {
         background-color: #FFFFFF;
         padding: 24px;
@@ -39,7 +46,6 @@ st.markdown("""
         border: 1px solid #E2E8F0;
     }
 
-    /* Styling Tombol */
     div.stButton > button {
         background-color: #2563EB !important; 
         color: white !important;
@@ -54,7 +60,6 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
     }
     
-    /* Styling Sidebar */
     [data-testid="stSidebar"] {
         background-color: #F8FAFC !important;
         border-right: 1px solid #E2E8F0;
@@ -101,11 +106,20 @@ if 'settings' not in st.session_state:
         {'batas_masuk': '07:30', 'batas_pulang': '16:00'}
     ])
 
-if 'role' not in st.session_state:
-    st.session_state.role = None
+# --- BACA STATUS COOKIE ---
+cookie_role = cookie_manager.get(cookie="role")
 
+if 'role' not in st.session_state:
+    st.session_state.role = cookie_role
+
+# Pastikan state tersinkronisasi jika pengguna me-refresh halaman
+if cookie_role and st.session_state.role != cookie_role:
+    st.session_state.role = cookie_role
+
+# --- FUNGSI LOGOUT ---
 def logout():
     st.session_state.role = None
+    cookie_manager.delete("role")
 
 # ==========================================
 # HALAMAN LOGIN UTAMA
@@ -117,6 +131,8 @@ if st.session_state.role is None:
     # 1. Tombol Utama Pegawai
     if st.button("📸 Mulai Presensi Wajah & GPS", type="primary", use_container_width=True):
         st.session_state.role = "Pegawai"
+        cookie_manager.set("role", "Pegawai")
+        time.sleep(0.5) # Jeda waktu agar browser menyimpan cookie sebelum direfresh
         st.rerun()
 
     st.write("---")
@@ -131,6 +147,8 @@ if st.session_state.role is None:
             if st.button("Masuk Admin", use_container_width=True, key="btn_admin_main"):
                 if pwd == "admin123":
                     st.session_state.role = "Admin"
+                    cookie_manager.set("role", "Admin")
+                    time.sleep(0.5)
                     st.rerun()
                 else: 
                     st.error("Password Salah!")
@@ -141,6 +159,8 @@ if st.session_state.role is None:
             if st.button("Masuk Superadmin", use_container_width=True, key="btn_super_main"):
                 if pwd_super == "superadmin123":
                     st.session_state.role = "Superadmin"
+                    cookie_manager.set("role", "Superadmin")
+                    time.sleep(0.5)
                     st.rerun()
                 else: 
                     st.error("Password Salah!")
@@ -489,7 +509,6 @@ elif st.session_state.role == "Superadmin":
     with col_tombol:
         st.button("🚪 Logout", on_click=logout, use_container_width=True)
     
-    # Ubah dari 4 tab menjadi 5 tab
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏛️ Kelola Sekolah", "👥 Kelola Pegawai", "📝 Input Izin/Dinas", "🚨 Database", "⚙️ Jam Kerja"])
     
     with tab1:
@@ -595,7 +614,6 @@ elif st.session_state.role == "Superadmin":
                 pilihan_pegawai = st.selectbox("Pilih Pegawai:", st.session_state.employees['name'].tolist())
                 jenis_absen = st.selectbox("Status Kehadiran:", ["Sakit", "Izin", "Cuti", "Dinas Luar"])
                 
-                # Pembaruan: Input rentang tanggal
                 col_tgl1, col_tgl2 = st.columns(2)
                 with col_tgl1:
                     tanggal_mulai = st.date_input("Dari Tanggal")
@@ -616,7 +634,6 @@ elif st.session_state.role == "Superadmin":
                         with open(file_path, "wb") as f:
                             f.write(file_surat.getbuffer())
                         
-                        # Menghitung selisih hari dan membuat data untuk setiap harinya
                         delta = tanggal_selesai - tanggal_mulai
                         daftar_tanggal = [tanggal_mulai + datetime.timedelta(days=i) for i in range(delta.days + 1)]
                         
@@ -658,11 +675,9 @@ elif st.session_state.role == "Superadmin":
     with tab5:
         st.markdown("### ⚙️ Pengaturan Batas Waktu Absensi")
         
-        # Mengambil data waktu dari session state
         waktu_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
         waktu_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
         
-        # Konversi string ke format waktu (Time)
         waktu_masuk_obj = datetime.datetime.strptime(waktu_masuk_str, '%H:%M').time()
         waktu_pulang_obj = datetime.datetime.strptime(waktu_pulang_str, '%H:%M').time()
         
