@@ -391,38 +391,64 @@ elif st.session_state.role == "Admin":
         tgl_str = tgl_pilihan.strftime('%Y-%m-%d')
         df_absen_tgl = df_absen_raw[df_absen_raw['Tanggal'] == tgl_str] if not df_absen_raw.empty else pd.DataFrame()
         
-        # Penggabungan data pegawai dengan data kehadiran
-        if not df_absen_tgl.empty:
-            df_rekap = pd.merge(
-                df_emp[['nip', 'name', 'school_name']],
-                df_absen_tgl[['NIP', 'Jam', 'Jarak (m)', 'Status']],
-                left_on='nip',
-                right_on='NIP',
-                how='left'
-            )
-            # Mencegah duplikasi kolom NIP
-            df_rekap = df_rekap.drop(columns=['NIP'])
-        else:
-            df_rekap = df_emp[['nip', 'name', 'school_name']].copy()
-            df_rekap['Jam'] = '-'
-            df_rekap['Jarak (m)'] = '-'
-            df_rekap['Status'] = None
+        # LOGIKA BARU: Menyusun 1 Baris per Pegawai
+        rekap_list = []
+        for index, emp in df_emp.iterrows():
+            nip = emp['nip']
+            nama = emp['name']
+            sekolah = emp['school_name']
             
-        df_rekap['Tanggal'] = tgl_str
-        df_rekap['Jam'] = df_rekap['Jam'].fillna('-')
-        df_rekap['Jarak (m)'] = df_rekap['Jarak (m)'].fillna('-')
-        df_rekap['Status'] = df_rekap['Status'].fillna('Tanpa Keterangan')
-        
-        df_rekap = df_rekap.rename(columns={
-            'nip': 'NIP',
-            'name': 'Nama',
-            'school_name': 'Sekolah'
-        })[['NIP', 'Nama', 'Sekolah', 'Tanggal', 'Jam', 'Jarak (m)', 'Status']]
+            data_absen_pegawai = df_absen_tgl[df_absen_tgl['NIP'] == nip]
+            
+            jam_masuk = '-'
+            jam_pulang = '-'
+            jarak = '-'
+            status_final = 'Tanpa Keterangan'
+            
+            if not data_absen_pegawai.empty:
+                # Ambil data masuk
+                absen_masuk = data_absen_pegawai[data_absen_pegawai['Status'].str.contains('Masuk', na=False, case=False)]
+                if not absen_masuk.empty:
+                    jam_masuk = absen_masuk.iloc[0]['Jam']
+                    jarak = absen_masuk.iloc[0]['Jarak (m)']
+                    status_final = absen_masuk.iloc[0]['Status']
+                
+                # Ambil data pulang
+                absen_pulang = data_absen_pegawai[data_absen_pegawai['Status'].str.contains('Pulang', na=False, case=False)]
+                if not absen_pulang.empty:
+                    jam_pulang = absen_pulang.iloc[0]['Jam']
+                    if jarak == '-':
+                        jarak = absen_pulang.iloc[0]['Jarak (m)']
+                    
+                    # Gabungkan status jika ada masuk dan pulang
+                    if not absen_masuk.empty:
+                        status_final = f"{absen_masuk.iloc[0]['Status']} & {absen_pulang.iloc[0]['Status']}"
+                    else:
+                        status_final = absen_pulang.iloc[0]['Status']
+                
+                # Cek jika Izin/Sakit/Cuti/Dinas (Bukan Hadir)
+                absen_lainnya = data_absen_pegawai[~data_absen_pegawai['Status'].str.contains('Hadir|Masuk|Pulang', na=False, case=False)]
+                if not absen_lainnya.empty:
+                    status_final = absen_lainnya.iloc[0]['Status']
+                    jarak = absen_lainnya.iloc[0]['Jarak (m)']
+                    
+            rekap_list.append({
+                'NIP': nip,
+                'NAMA': nama,
+                'SEKOLAH': sekolah,
+                'TANGGAL': tgl_str,
+                'JARAK': str(jarak),
+                'JAM MASUK': jam_masuk,
+                'JAM PULANG': jam_pulang,
+                'STATUS': status_final
+            })
+            
+        df_rekap = pd.DataFrame(rekap_list)
         
         # Ringkasan Statistik
         total_pegawai = len(df_rekap)
-        hadir_count = len(df_rekap[df_rekap['Status'].str.contains('Hadir', na=False)])
-        tanpa_ket_count = len(df_rekap[df_rekap['Status'] == 'Tanpa Keterangan'])
+        hadir_count = len(df_rekap[df_rekap['STATUS'].str.contains('Hadir|Masuk|Pulang', na=False)])
+        tanpa_ket_count = len(df_rekap[df_rekap['STATUS'] == 'Tanpa Keterangan'])
         izin_dll_count = total_pegawai - hadir_count - tanpa_ket_count
         
         m1, m2, m3, m4 = st.columns(4)
@@ -443,7 +469,7 @@ elif st.session_state.role == "Admin":
             return ''
 
         # Terapkan warna ke dataframe
-        df_berwarna = df_rekap.style.map(warnai_status, subset=['Status'])
+        df_berwarna = df_rekap.style.map(warnai_status, subset=['STATUS'])
         
         st.dataframe(df_berwarna, use_container_width=True)
         st.download_button(
