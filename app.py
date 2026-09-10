@@ -63,9 +63,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- KONFIGURASI DATABASE CSV ---
+# --- KONFIGURASI DATABASE CSV ---
 FILE_ABSENSI = "data_absensi.csv"
 FILE_SEKOLAH = "data_sekolah.csv"
 FILE_PEGAWAI = "data_pegawai.csv"
+FILE_PENGATURAN = "data_pengaturan.csv"
 DIR_SURAT = "surat_izin"
 if not os.path.exists(DIR_SURAT):
     os.makedirs(DIR_SURAT)
