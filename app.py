@@ -94,12 +94,18 @@ if 'schools' not in st.session_state:
 
 if 'employees' not in st.session_state:
     st.session_state.employees = muat_data(FILE_PEGAWAI, [], kolom_default=['nip', 'name', 'school_name', 'photo_uploaded', 'photo_base64'])
+if 'settings' not in st.session_state:
+    st.session_state.settings = muat_data(FILE_PENGATURAN, [
+        {'batas_masuk': '07:30', 'batas_pulang': '16:00'}
+    ])
 
 if 'role' not in st.session_state:
     st.session_state.role = None
 
 def logout():
     st.session_state.role = None
+
+
 
 # ==========================================
 # HALAMAN LOGIN UTAMA
@@ -271,8 +277,29 @@ if st.session_state.role == "Pegawai":
                             btn_pulang = st.button("📤 PULANG", use_container_width=True)
                             
                         if btn_masuk or btn_pulang:
-                            jenis_absen = "Masuk" if btn_masuk else "Pulang"
                             now = datetime.datetime.now(pytz.timezone('Asia/Makassar'))
+                            jam_sekarang = now.time() # Ambil jam saat tombol ditekan
+                            
+                            # Ambil aturan batas waktu dari database
+                            batas_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
+                            batas_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
+                            
+                            batas_masuk_obj = datetime.datetime.strptime(batas_masuk_str, '%H:%M').time()
+                            batas_pulang_obj = datetime.datetime.strptime(batas_pulang_str, '%H:%M').time()
+                            
+                            # Cek Keterlambatan
+                            if btn_masuk:
+                                if jam_sekarang > batas_masuk_obj:
+                                    jenis_absen = "Masuk (TERLAMBAT)"
+                                else:
+                                    jenis_absen = "Masuk (Tepat Waktu)"
+                            else: # btn_pulang
+                                if jam_sekarang < batas_pulang_obj:
+                                    jenis_absen = "Pulang (LEBIH AWAL)"
+                                else:
+                                    jenis_absen = "Pulang (Tepat Waktu)"
+
+                            # Menyimpan data
                             data_absen_baru = pd.DataFrame([{
                                 'NIP': emp_data['nip'], 
                                 'Nama': emp_data['name'], 
@@ -280,7 +307,7 @@ if st.session_state.role == "Pegawai":
                                 'Tanggal': now.strftime('%Y-%m-%d'), 
                                 'Jam': now.strftime('%H:%M:%S'),
                                 'Jarak (m)': round(jarak_meter, 1), 
-                                'Status': f'Hadir ({jenis_absen})'
+                                'Status': f'Hadir - {jenis_absen}'  # <-- Status otomatis terganti disini
                             }])
                             df_lama = pd.read_csv(FILE_ABSENSI) if os.path.exists(FILE_ABSENSI) else pd.DataFrame()
                             df_final = pd.concat([df_lama, data_absen_baru], ignore_index=True)
@@ -403,7 +430,8 @@ elif st.session_state.role == "Superadmin":
     with col_tombol:
         st.button("🚪 Logout", on_click=logout, use_container_width=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["🏛️ Kelola Sekolah", "👥 Kelola Pegawai", "📝 Input Izin/Dinas", "🚨 Database"])
+    # Ubah dari 4 tab menjadi 5 tab
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏛️ Kelola Sekolah", "👥 Kelola Pegawai", "📝 Input Izin/Dinas", "🚨 Database", "⚙️ Jam Kerja"])
     
     with tab1:
         st.markdown("### Tambah Titik Sekolah Baru")
@@ -568,3 +596,24 @@ elif st.session_state.role == "Superadmin":
                 if os.path.exists(FILE_PEGAWAI): os.remove(FILE_PEGAWAI)
                 st.session_state.employees = pd.DataFrame()
                 st.success("Data pegawai telah di-reset.")
+    with tab5:
+        st.markdown("### ⚙️ Pengaturan Batas Waktu Absensi")
+        
+        # Mengambil data waktu dari session state
+        waktu_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
+        waktu_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
+        
+        # Konversi string ke format waktu (Time)
+        waktu_masuk_obj = datetime.datetime.strptime(waktu_masuk_str, '%H:%M').time()
+        waktu_pulang_obj = datetime.datetime.strptime(waktu_pulang_str, '%H:%M').time()
+        
+        with st.form("form_waktu"):
+            new_batas_masuk = st.time_input("Batas Waktu Absen Masuk (Di atas jam ini = Terlambat)", waktu_masuk_obj)
+            new_batas_pulang = st.time_input("Batas Waktu Absen Pulang (Di bawah jam ini = Pulang Awal)", waktu_pulang_obj)
+            
+            if st.form_submit_button("Simpan Pengaturan Waktu"):
+                st.session_state.settings.at[0, 'batas_masuk'] = new_batas_masuk.strftime('%H:%M')
+                st.session_state.settings.at[0, 'batas_pulang'] = new_batas_pulang.strftime('%H:%M')
+                simpan_data(st.session_state.settings, FILE_PENGATURAN)
+                st.success("✅ Pengaturan jam kerja berhasil diperbarui!")
+                st.rerun()    
