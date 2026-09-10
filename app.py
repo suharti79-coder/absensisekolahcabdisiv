@@ -408,7 +408,12 @@ elif st.session_state.role == "Admin":
             df_absen_raw['NIP'] = df_absen_raw['NIP'].astype(str)
             
         tgl_str = tgl_pilihan.strftime('%Y-%m-%d')
-        df_absen_tgl = df_absen_raw[df_absen_raw['Tanggal'] == tgl_str] if not df_absen_raw.empty else pd.DataFrame()
+        
+        # PERBAIKAN 1: Memastikan tabel kosong tetap memiliki kolom NIP agar tidak error
+        if not df_absen_raw.empty and 'Tanggal' in df_absen_raw.columns:
+            df_absen_tgl = df_absen_raw[df_absen_raw['Tanggal'] == tgl_str]
+        else:
+            df_absen_tgl = pd.DataFrame(columns=['NIP', 'Nama', 'Sekolah', 'Tanggal', 'Jam', 'Jarak (m)', 'Status'])
         
         # LOGIKA BARU: Menyusun 1 Baris per Pegawai
         rekap_list = []
@@ -451,14 +456,15 @@ elif st.session_state.role == "Admin":
                     status_final = absen_lainnya.iloc[0]['Status']
                     jarak = absen_lainnya.iloc[0]['Jarak (m)']
                     
+            # PERBAIKAN 2: Mengubah nama kolom JAM MASUK -> MASUK, dan JAM PULANG -> PULANG
             rekap_list.append({
                 'NIP': nip,
                 'NAMA': nama,
                 'SEKOLAH': sekolah,
                 'TANGGAL': tgl_str,
                 'JARAK': str(jarak),
-                'JAM MASUK': jam_masuk,
-                'JAM PULANG': jam_pulang,
+                'MASUK': jam_masuk,
+                'PULANG': jam_pulang,
                 'STATUS': status_final
             })
             
