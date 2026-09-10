@@ -280,14 +280,66 @@ if st.session_state.role == "Pegawai":
                             
                         if btn_masuk or btn_pulang:
                             now = datetime.datetime.now(pytz.timezone('Asia/Makassar'))
-                            jam_sekarang = now.time() # Ambil jam saat tombol ditekan
+                            tgl_sekarang = now.strftime('%Y-%m-%d')
+                            jenis_aksi = "Masuk" if btn_masuk else "Pulang"
                             
-                            # Ambil aturan batas waktu dari database
-                            batas_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
-                            batas_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
+                            # 1. BACA DATABASE ABSENSI TERLEBIH DAHULU
+                            df_lama = pd.read_csv(FILE_ABSENSI) if os.path.exists(FILE_ABSENSI) else pd.DataFrame()
                             
-                            batas_masuk_obj = datetime.datetime.strptime(batas_masuk_str, '%H:%M').time()
-                            batas_pulang_obj = datetime.datetime.strptime(batas_pulang_str, '%H:%M').time()
+                            # 2. CEK APAKAH PEGAWAI SUDAH ABSEN (MASUK/PULANG) HARI INI
+                            sudah_absen = False
+                            if not df_lama.empty and 'NIP' in df_lama.columns and 'Tanggal' in df_lama.columns:
+                                df_lama['NIP'] = df_lama['NIP'].astype(str)
+                                
+                                # Filter data berdasarkan NIP, Tanggal Hari Ini, dan Jenis Absen (Masuk/Pulang)
+                                data_terceklis = df_lama[
+                                    (df_lama['NIP'] == str(emp_data['nip'])) & 
+                                    (df_lama['Tanggal'] == tgl_sekarang) & 
+                                    (df_lama['Status'].str.contains(jenis_aksi, na=False))
+                                ]
+                                
+                                if not data_terceklis.empty:
+                                    sudah_absen = True
+
+                            # 3. JIKA SUDAH ABSEN, TAMPILKAN PERINGATAN. JIKA BELUM, SIMPAN ABSENSI.
+                            if sudah_absen:
+                                st.warning(f"⚠️ Anda sudah melakukan absensi **{jenis_aksi}** untuk hari ini ({tgl_sekarang})!")
+                            else:
+                                jam_sekarang = now.time()
+                                
+                                # Ambil aturan batas waktu dari database pengaturan
+                                batas_masuk_str = st.session_state.settings['batas_masuk'].iloc[0]
+                                batas_pulang_str = st.session_state.settings['batas_pulang'].iloc[0]
+                                
+                                batas_masuk_obj = datetime.datetime.strptime(batas_masuk_str, '%H:%M').time()
+                                batas_pulang_obj = datetime.datetime.strptime(batas_pulang_str, '%H:%M').time()
+                                
+                                # Cek Keterlambatan / Pulang Cepat
+                                if btn_masuk:
+                                    if jam_sekarang > batas_masuk_obj:
+                                        jenis_absen = "Masuk (TERLAMBAT)"
+                                    else:
+                                        jenis_absen = "Masuk (Tepat Waktu)"
+                                else: # btn_pulang
+                                    if jam_sekarang < batas_pulang_obj:
+                                        jenis_absen = "Pulang (LEBIH AWAL)"
+                                    else:
+                                        jenis_absen = "Pulang (Tepat Waktu)"
+
+                                # Menyimpan data absensi baru
+                                data_absen_baru = pd.DataFrame([{
+                                    'NIP': str(emp_data['nip']), 
+                                    'Nama': emp_data['name'], 
+                                    'Sekolah': sch_data['school_name'],
+                                    'Tanggal': tgl_sekarang, 
+                                    'Jam': now.strftime('%H:%M:%S'),
+                                    'Jarak (m)': round(jarak_meter, 1), 
+                                    'Status': f'Hadir - {jenis_absen}'
+                                }])
+                                
+                                df_final = pd.concat([df_lama, data_absen_baru], ignore_index=True)
+                                simpan_data(df_final, FILE_ABSENSI)
+                                st.success(f"✅ Absensi {jenis_absen} Anda berhasil tersimpan!")
                             
                             # Cek Keterlambatan
                             if btn_masuk:
