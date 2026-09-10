@@ -14,12 +14,8 @@ import extra_streamlit_components as stx
 st.set_page_config(page_title="Sistem Absensi Sekolah Cabdis Wil IV", page_icon="🏫", layout="centered")
 
 # --- INISIALISASI COOKIE MANAGER ---
-# Wajib dipanggil di bagian paling atas aplikasi
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
+# Langsung panggil tanpa @st.cache_resource dan beri kunci (key) unik
+cookie_manager = stx.CookieManager(key="cookie_manager_utama")
 
 # --- KUSTOMISASI TAMPILAN (CUSTOM CSS) ---
 st.markdown("""
